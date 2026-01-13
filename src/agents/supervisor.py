@@ -1,8 +1,8 @@
-from typing import TypedDict, Annotated, List, Union
+from typing import TypedDict, Annotated, List
 from langgraph.graph import StateGraph, END
 import operator
+from src.core.factory import get_smartops_llm
 
-# 1. Definimos o estado que será compartilhado entre os agentes
 class AgentState(TypedDict):
     task: str
     order_id: str
@@ -11,32 +11,34 @@ class AgentState(TypedDict):
     history: Annotated[List[str], operator.add]
     final_solution: str
 
-# 2. Funções lógicas (Nodes) - Simulando a decisão do Supervisor
 def supervisor_router(state: AgentState):
-    print("--- SUPERVISOR: ANALISANDO O PEDIDO ---")
-    task = state["task"].lower()
+    llm = get_smartops_llm(temperature=0) # Precisamos de precisão aqui
+    
+    prompt = f"""
+    És o Supervisor de Logística do iFood. Analisa o problema: "{state['task']}"
+    Decide qual o próximo agente especializado:
+    - 'logistics_agent': Problemas de atraso, GPS, entrega ou estafeta.
+    - 'finance_agent': Problemas de pagamento, iFood Pago ou estornos.
+    - 'cx_agent': Se o problema já foi analisado e precisa de resposta ao cliente.
+    
+    Responde APENAS com o nome do agente em letras minúsculas.
+    """
+    
+    response = llm.invoke(prompt)
+    return {"next_step": response.content.strip().lower()}
 
-    if "atraso" in task ir "entregador" in task:
-            return "logistics_agent"
-    elif "pagamento" in task or "estorno" in task:
-            return "finance_agent"
-    else:
-            return "cx_agent"
-
-# 3. Construindo o Grafo de Decisão
+# Configuração do Grafo
 workflow = StateGraph(AgentState)
-
-# Adicionamos os nós (que vamos implementar nos próximos passos)
-# Por enquanto, eles são apenas placeholders para a estrutura
 workflow.add_node("supervisor", supervisor_router)
-workflow.add_node("logistics_agent", lambda x: {"history": ["Logística analisou o GPS"], "next_step": "cx_agent"})
-workflow.add_node("finance_agent", lambda x: {"history": ["Financeiro checou o iFood Pago."], "next_step": "cx_agent"})
-workflow.add_node("cx_agent", lambda x: {"final_solution": "Sua solicitação foi processada com sucesso!", "next_step": END})
+# (Os outros nós serão as funções que detalhámos antes)
 
-# Conectamos as bordas (Edges)
 workflow.set_entry_point("supervisor")
-workflow.add_edge("logistics_agent", "cx_agent")
-workflow.add_edge("finance_agent", "cx_agent")
-workflow.add_edge("cx_agent", END)
-
-app = workflow.compile()
+workflow.add_conditional_edges(
+    "supervisor",
+    lambda x: x["next_step"],
+    {
+        "logistics_agent": "logistics_agent",
+        "finance_agent": "finance_agent",
+        "cx_agent": "cx_agent"
+    }
+)

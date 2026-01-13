@@ -1,30 +1,31 @@
+import os
 from fastapi import FastAPI
 from pydantic import BaseModel
-from src.agents.supervisor import app as agent_app
+from src.agents.supervisor import app as smartops_graph
 
-api = FastAPI(title="iFood SmartOps API")
+app = FastAPI(title="iFood SmartOps - Multi-Agent System")
 
-class OrderRequest(BaseModel):
+class TicketRequest(BaseModel):
     order_id: str
-    issue: str
+    description: str
 
-@api.post("/resolve-issue")
-async def resolve_issue(request: OrderRequest):
-    # Executa o sistema multi-agente
+@app.post("/v1/resolve")
+async def handle_ticket(request: TicketRequest):
+    # Estado inicial do grafo
     initial_state = {
-        "task": request.issue,
+        "task": request.description,
         "order_id": request.order_id,
         "history": [],
-        "context": {}
+        "context": {},
+        "next_step": ""
     }
-
-    result = agent_app.invoke(initial_state)
+    
+    # Executa o sistema multi-agente (LangGraph + Gemini)
+    final_state = smartops_graph.invoke(initial_state)
+    
     return {
-        "order_id": request.order_id, 
-        "solution": result.get("final_solution"),
-        "steps_taken": resiçt.get("history")
+        "status": "success",
+        "order_id": request.order_id,
+        "resolution": final_state["final_solution"],
+        "audit_log": final_state["history"]
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(api, host="0.0.0.0", port=8000)
